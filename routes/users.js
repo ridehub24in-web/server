@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getProfile, updateProfile, getUsers, getUserById, uploadGalleryImage, deleteGalleryImage } = require('../controllers/userController');
+const { getProfile, updateProfile, getUsers, getUserById, uploadGalleryImage, deleteGalleryImage, followUser, unfollowUser, toggleLiveStatus, getLiveUsers } = require('../controllers/userController');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
@@ -9,9 +9,17 @@ router.get('/profile', auth, getProfile);
 // Support both form-data profile image upload and standard JSON profile updates
 router.put('/update', auth, upload.single('profilePhoto'), updateProfile);
 
+// Live Stream management routes (defined before parameterized routes like :id to prevent name collision)
+router.get('/live/all', auth, getLiveUsers);
+router.post('/live/toggle', auth, toggleLiveStatus);
+
 // Gallery upload routes matching client's multipart requests
 router.post('/gallery/upload', auth, upload.single('image'), uploadGalleryImage);
 router.post('/gallery/delete', auth, deleteGalleryImage);
+
+// Follow/Unfollow routes
+router.post('/follow/:id', auth, followUser);
+router.post('/unfollow/:id', auth, unfollowUser);
 
 // Backwards compatibility routes
 router.post('/gallery', auth, upload.single('image'), uploadGalleryImage);

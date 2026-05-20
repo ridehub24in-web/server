@@ -14,4 +14,9 @@ const messageSchema = new mongoose.Schema({
   seen: { type: Boolean, default: false }
 }, { timestamps: true });
 
+// Optimizing chat queries to prevent MongoDB crashes during large message loads
+messageSchema.index({ sender: 1, receiver: 1 });
+messageSchema.index({ receiver: 1, seen: 1 });
+messageSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Message', messageSchema);

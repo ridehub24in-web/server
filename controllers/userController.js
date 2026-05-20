@@ -15,7 +15,7 @@ exports.updateProfile = async (req, res) => {
     const updateData = { ...req.body };
     
     if (req.file) {
-      updateData.profilePhoto = `/uploads/${req.file.filename}`;
+      updateData.profilePhoto = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     }
     
     // Ensure we don't accidentally update sensitive fields if they were in the body
@@ -40,14 +40,14 @@ exports.updateProfile = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const { gender, country, city, interest } = req.query;
-    const query = { _id: { $ne: req.user.id } };
+    const query = {};
 
     if (gender) query.gender = gender;
     if (country) query.country = { $regex: new RegExp(country, 'i') };
     if (city) query.city = { $regex: new RegExp(city, 'i') };
     if (interest) query.interests = { $in: [interest] };
 
-    const users = await User.find(query).select('-password');
+    const users = await User.find(query).select('-password').lean();
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -73,7 +73,7 @@ exports.uploadGalleryImage = async (req, res) => {
     let imageUrl = bodyImageUrl;
 
     if (!imageUrl && req.file) {
-      imageUrl = `/uploads/${req.file.filename}`;
+      imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     }
 
     if (!imageUrl) return res.status(400).json({ message: 'No image provided' });
@@ -112,6 +112,104 @@ exports.deleteGalleryImage = async (req, res) => {
     }
     
     res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.followUser = async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.id;
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({ message: 'You cannot follow yourself' });
+    }
+
+    // Add target to current user's following list
+    const currentUser = await User.findByIdAndUpdate(
+      currentUserId,
+      { $addToSet: { following: targetUserId } },
+      { new: true }
+    ).select('-password');
+
+    // Add current user to target user's followers list
+    const targetUser = await User.findByIdAndUpdate(
+      targetUserId,
+      { $addToSet: { followers: currentUserId } },
+      { new: true }
+    );
+
+    // Emit real-time profile update to all connected users
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('profileUpdated', currentUser);
+      io.emit('profileUpdated', targetUser);
+    }
+
+    res.json({ success: true, user: currentUser });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.unfollowUser = async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.id;
+
+    // Remove target from current user's following list
+    const currentUser = await User.findByIdAndUpdate(
+      currentUserId,
+      { $pull: { following: targetUserId } },
+      { new: true }
+    ).select('-password');
+
+    // Remove current user from target user's followers list
+    const targetUser = await User.findByIdAndUpdate(
+      targetUserId,
+      { $pull: { followers: currentUserId } },
+      { new: true }
+    );
+
+    // Emit real-time profile update to all connected users
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('profileUpdated', currentUser);
+      io.emit('profileUpdated', targetUser);
+    }
+
+    res.json({ success: true, user: currentUser });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.toggleLiveStatus = async (req, res) => {
+  try {
+    const { isLive } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { isLive: !!isLive },
+      { new: true }
+    ).select('-password');
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('profileUpdated', user);
+      io.emit('liveStatusChanged', { userId: req.user.id, isLive: !!isLive, user });
+    }
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.getLiveUsers = async (req, res) => {
+  try {
+    const users = await User.find({ isLive: true }).select('-password').lean();
+    res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

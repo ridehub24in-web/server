@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: Date.now },
   pushToken: { type: String, default: '' },
   images: [{ type: String }],
-  likesCount: { type: Number, default: 0 },
+  likesCount: { type: Number, default: 1000 },
   wallet: { type: Number, default: 0 },
   receivedGifts: [{
     giftId: { type: String },
@@ -29,7 +29,23 @@ const userSchema = new mongoose.Schema({
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     createdAt: { type: Date, default: Date.now }
   }],
-  chatBackground: { type: String, default: '#F8F9FA' }
+  chatBackground: { type: String, default: '#F8F9FA' },
+  followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  isLive: { type: Boolean, default: false }
 }, { timestamps: true });
+
+userSchema.virtual('totalLikes').get(function() {
+  return this.likesCount;
+});
+userSchema.set('toJSON', { virtuals: true });
+userSchema.set('toObject', { virtuals: true });
+
+// Optimizing queries to prevent full collection scans (Memory Leaks / High CPU)
+userSchema.index({ isOnline: 1 });
+userSchema.index({ isLive: 1 });
+userSchema.index({ gender: 1 });
+userSchema.index({ likesCount: -1 });
+userSchema.index({ matches: 1 });
 
 module.exports = mongoose.model('User', userSchema);

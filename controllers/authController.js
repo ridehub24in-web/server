@@ -5,6 +5,9 @@ const jwt = require('jsonwebtoken');
 exports.register = async (req, res) => {
   try {
     const { name, password, gender, country, city } = req.body;
+    if (!name || !req.body.email || !password) {
+      return res.status(400).json({ message: 'Name, Email, and Password are required.' });
+    }
     const email = req.body.email.toLowerCase();
     
     // Auto-generate username from email
@@ -40,6 +43,16 @@ exports.register = async (req, res) => {
     });
   } catch (err) {
     console.error('Registration error:', err);
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      fs.appendFileSync(
+        path.join(__dirname, '../registration_error.log'),
+        `[${new Date().toISOString()}] Registration Failed:\nBody: ${JSON.stringify(req.body)}\nError: ${err.message}\nStack: ${err.stack}\n\n`
+      );
+    } catch (logErr) {
+      console.error('Failed to write registration log:', logErr);
+    }
     res.status(500).json({ message: err.message });
   }
 };

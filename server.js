@@ -40,16 +40,48 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
+// Request logging middleware for debugging API calls
+app.use((req, res, next) => {
+  const logMessage = `[${new Date().toISOString()}] ${req.method} ${req.url} - IP: ${req.ip} - Body: ${JSON.stringify(req.body)}\n`;
+  console.log(`[Incoming Request] ${req.method} ${req.url}`);
+  try {
+    fs.appendFileSync(path.join(__dirname, 'api_requests.log'), logMessage);
+  } catch (err) {
+    console.error('Failed to write to api_requests.log:', err);
+  }
+  next();
+});
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static('uploads'));
+
+// Testing route to verify server connectivity
+app.get(['/test', '/api/test'], (req, res) => {
+  res.status(200).json({ message: 'Backend is running correctly!', ip: req.ip });
+});
+
+// Routes (mapped with both /api prefix and direct fallback for absolute robustness)
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+
 app.use('/api/users', userRoutes);
+app.use('/users', userRoutes);
+
 app.use('/api/chats', chatRoutes);
+app.use('/chats', chatRoutes);
+
 app.use('/api/matches', matchRoutes);
+app.use('/matches', matchRoutes);
+
 app.use('/api/swipe', swipeRoutes);
+app.use('/swipe', swipeRoutes);
+
 app.use('/api/payments', paymentRoutes);
+app.use('/payments', paymentRoutes);
+
 app.use('/api/gifts', giftRoutes);
+app.use('/gifts', giftRoutes);
 
 // Socket.io logic
 const User = require('./models/User');
@@ -65,7 +97,7 @@ io.on('connection', (socket) => {
     // Set Active immediately
     await User.findByIdAndUpdate(userId, { isOnline: true });
     
-    const allOnlineUsers = await User.find({ isOnline: true }).select('_id');
+    const allOnlineUsers = await User.find({ isOnline: true }).select('_id').lean();
     socket.emit('initialOnlineUsers', allOnlineUsers.map(u => u._id.toString()));
     io.emit('userOnline', userId);
     
@@ -75,6 +107,49 @@ io.on('connection', (socket) => {
   socket.on('profileUpdated', (updatedUser) => {
     console.log(`Profile Updated Broadcast for user: ${updatedUser._id}`);
     io.emit('profileUpdated', updatedUser);
+  });
+
+  // Live Stream Socket Handlers
+  socket.on('startLive', async ({ userId, name }) => {
+    if (!userId) return;
+    console.log(`[Socket] User ${name} (${userId}) started streaming live.`);
+    socket.join(`live:${userId}`);
+    await User.findByIdAndUpdate(userId, { isLive: true });
+    io.emit('liveStreamStarted', { userId, name, timestamp: new Date() });
+  });
+
+  socket.on('joinLive', ({ streamUserId, viewerId, viewerName }) => {
+    if (!streamUserId) return;
+    console.log(`[Socket] Viewer ${viewerName} joined stream of ${streamUserId}`);
+    socket.join(`live:${streamUserId}`);
+    io.to(`live:${streamUserId}`).emit('viewerJoined', { viewerId, name: viewerName, timestamp: new Date() });
+  });
+
+  socket.on('sendLiveComment', ({ streamUserId, senderId, senderName, comment }) => {
+    if (!streamUserId) return;
+    console.log(`[Socket] Live Comment from ${senderName} on stream ${streamUserId}: ${comment}`);
+    io.to(`live:${streamUserId}`).emit('newLiveComment', {
+      senderId,
+      senderName,
+      comment,
+      timestamp: new Date()
+    });
+  });
+
+  socket.on('sendLiveReaction', ({ streamUserId, type }) => {
+    if (!streamUserId) return;
+    io.to(`live:${streamUserId}`).emit('newLiveReaction', {
+      type: type || 'heart',
+      timestamp: new Date()
+    });
+  });
+
+  socket.on('stopLive', async ({ userId }) => {
+    if (!userId) return;
+    console.log(`[Socket] User (${userId}) stopped streaming live.`);
+    socket.leave(`live:${userId}`);
+    await User.findByIdAndUpdate(userId, { isLive: false });
+    io.emit('liveStreamEnded', { userId, timestamp: new Date() });
   });
 
   socket.on('typing', (data) => {
@@ -104,6 +179,14 @@ io.on('connection', (socket) => {
     
     if (disconnectedUserId) {
       onlineUsers.delete(disconnectedUserId);
+      // Check if user was live to properly end stream for viewers
+      const dbUser = await User.findById(disconnectedUserId);
+      if (dbUser && dbUser.isLive) {
+        dbUser.isLive = false;
+        await dbUser.save();
+        io.emit('liveStreamEnded', { userId: disconnectedUserId, timestamp: new Date() });
+      }
+
       await User.findByIdAndUpdate(disconnectedUserId, { 
         isOnline: false,
         lastSeen: new Date()
@@ -128,7 +211,14 @@ if (process.env.VERCEL) {
   // In serverless (Vercel), just connect to DB once
   connectDB();
 } else {
-  connectDB().then(() => {
+  connectDB().then(async () => {
+    try {
+      const User = require('./models/User');
+      await User.updateMany({ likesCount: { $lt: 1000 } }, { $set: { likesCount: 1000 } });
+      console.log('Likes migration: All existing users updated to minimum 1000 likes.');
+    } catch (err) {
+      console.log('Likes migration error:', err);
+    }
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
     });

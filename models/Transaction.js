@@ -14,4 +14,9 @@ const transactionSchema = new mongoose.Schema({
   giftIcon: { type: String }
 }, { timestamps: true });
 
+transactionSchema.index({ senderId: 1 });
+transactionSchema.index({ receiverId: 1 });
+transactionSchema.index({ status: 1 });
+transactionSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('Transaction', transactionSchema);

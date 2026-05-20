@@ -90,7 +90,7 @@ exports.getMessages = async (req, res) => {
         { sender: req.user.id, receiver: otherUserId },
         { sender: otherUserId, receiver: req.user.id }
       ]
-    }).sort('createdAt');
+    }).sort('createdAt').lean();
     res.json(messages);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -103,7 +103,8 @@ exports.getChatList = async (req, res) => {
       $or: [{ sender: req.user.id }, { receiver: req.user.id }]
     })
     .sort('-createdAt')
-    .populate('sender receiver', 'name profilePhoto');
+    .populate('sender receiver', 'name profilePhoto')
+    .lean();
 
     const chatMap = new Map();
     
