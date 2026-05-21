@@ -28,8 +28,8 @@ const connectDB = async () => {
     } catch (e) {
       console.error('Failed to write to connection_error.log:', e);
     }
-    // Exit process with failure if initial connection fails
-    process.exit(1);
+    // Throw error instead of exiting directly so server.js can handle it
+    throw error;
   }
 };
 

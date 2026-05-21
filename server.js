@@ -211,18 +211,25 @@ if (process.env.VERCEL) {
   // In serverless (Vercel), just connect to DB once
   connectDB();
 } else {
-  connectDB().then(async () => {
-    try {
-      const User = require('./models/User');
-      await User.updateMany({ likesCount: { $lt: 1000 } }, { $set: { likesCount: 1000 } });
-      console.log('Likes migration: All existing users updated to minimum 1000 likes.');
-    } catch (err) {
-      console.log('Likes migration error:', err);
-    }
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT}`);
+  connectDB()
+    .then(async () => {
+      try {
+        const User = require('./models/User');
+        await User.updateMany({ likesCount: { $lt: 1000 } }, { $set: { likesCount: 1000 } });
+        console.log('Likes migration: All existing users updated to minimum 1000 likes.');
+      } catch (err) {
+        console.log('Likes migration error:', err);
+      }
+    })
+    .catch((err) => {
+      console.error('MongoDB Connection Error on Startup:', err.message);
+      console.warn('Server is starting, but Database is NOT connected. Please check your MongoDB Atlas IP Whitelist (0.0.0.0/0).');
+    })
+    .finally(() => {
+      server.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on port ${PORT}`);
+      });
     });
-  });
 }
 
 module.exports = app;
