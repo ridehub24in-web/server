@@ -197,6 +197,23 @@ io.on('connection', (socket) => {
   });
 });
 
+// Root Route
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "RideHub24 Backend Running Successfully"
+  });
+});
+
+// Health Check Route
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Health check passed",
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 404 Handler
 app.use((req, res) => {
   res.status(404).json({ message: `Route ${req.originalUrl} not found` });
